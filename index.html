@@ -54,7 +54,7 @@
     .output-row {
       display: flex;
       gap: 0.5rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 0.5rem;
     }
 
     #password {
@@ -72,6 +72,13 @@
       cursor: text;
     }
 
+    /* Secondary actions (Copy / Show-Hide) under the display. */
+    .actions-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
     /* ---------- Buttons ---------- */
     button {
       padding: 0.85rem 1.4rem;
@@ -86,6 +93,15 @@
     }
 
     button:hover { background: var(--accent-strong); }
+
+    .btn-secondary {
+      flex: 1;
+      color: var(--text);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover { background: var(--border); }
 
     /* Visible keyboard focus everywhere. */
     :focus-visible {
@@ -166,11 +182,12 @@
   <main>
     <h1>Password Generator</h1>
 
-    <!-- Password display: read-only so it can be selected/copied but not edited. -->
+    <!-- Password display: read-only so it can be selected/copied but not edited.
+         Starts masked (type="password"); the Show/Hide button toggles the type. -->
     <div class="output-row">
       <input
         id="password"
-        type="text"
+        type="password"
         readonly
         aria-label="Generated password"
         autocomplete="off"
@@ -179,6 +196,12 @@
         placeholder="Click Generate"
       />
       <button id="generate" type="button">Generate</button>
+    </div>
+
+    <!-- Secondary actions -->
+    <div class="actions-row">
+      <button id="copy" type="button" class="btn-secondary" aria-label="Copy password to clipboard">Copy</button>
+      <button id="toggle-visibility" type="button" class="btn-secondary" aria-pressed="false" aria-label="Show password">Show</button>
     </div>
 
     <!-- Length slider with live readout -->
@@ -200,6 +223,9 @@
         <label><input type="checkbox" id="numbers" checked /> Numbers (0-9)</label>
         <label><input type="checkbox" id="symbols" checked /> Symbols (!@#$…)</label>
       </div>
+      <div class="checkbox-grid" style="margin-top: 0.5rem;">
+        <label><input type="checkbox" id="exclude-ambiguous" /> Exclude ambiguous (0, O, l, 1, I)</label>
+      </div>
     </fieldset>
 
     <!-- Polite live region: announces status/errors without stealing focus. -->
@@ -217,14 +243,20 @@
       symbols: "!@#$%^&*()-_=+[]{};:,.<>?",
     };
 
+    // Characters that are easy to confuse with one another.
+    const AMBIGUOUS = "0Ol1I";
+
     /* ---------- DOM references ---------- */
     const passwordEl = document.getElementById("password");
     const generateBtn = document.getElementById("generate");
+    const copyBtn = document.getElementById("copy");
+    const toggleBtn = document.getElementById("toggle-visibility");
     const lengthEl = document.getElementById("length");
     const lengthValueEl = document.getElementById("length-value");
     const statusEl = document.getElementById("status");
-    const typeCheckboxes = Object.keys(SETS).map((id) =>
-      document.getElementById(id)
+    const excludeAmbiguousEl = document.getElementById("exclude-ambiguous");
+    const typeCheckboxes = ["lowercase", "uppercase", "numbers", "symbols"].map(
+      (id) => document.getElementById(id)
     );
 
     /* ---------- Randomness ---------- */
@@ -262,11 +294,18 @@
 
     /* ---------- Generation ---------- */
 
+    /** Remove ambiguous characters from a set when that option is enabled. */
+    function stripAmbiguous(set) {
+      if (!excludeAmbiguousEl.checked) return set;
+      return [...set].filter((c) => !AMBIGUOUS.includes(c)).join("");
+    }
+
     /** Collect the character sets currently selected in the UI. */
     function getSelectedSets() {
       return typeCheckboxes
         .filter((cb) => cb.checked)
-        .map((cb) => SETS[cb.id]);
+        .map((cb) => stripAmbiguous(SETS[cb.id]))
+        .filter((set) => set.length > 0);
     }
 
     /**
@@ -303,37 +342,119 @@
     }
 
     /**
+     * Generate a fresh password from the current controls and display it.
+     * `announce` controls whether the live region is updated (off while the
+     * slider is being dragged, to avoid announcement spam).
+     */
+    function regenerate(announce = true) {
+      const sets = getSelectedSets();
+      const length = Number(lengthEl.value);
+
+      passwordEl.value = generatePassword(length, sets); // DOM only; never logged/stored.
+      if (announce) setStatus(`Generated a ${length}-character password.`);
+    }
+
+    /** Toggle the display between masked (password) and plain (text). */
+    function setPasswordVisibility(visible) {
+      passwordEl.type = visible ? "text" : "password";
+      toggleBtn.textContent = visible ? "Hide" : "Show";
+      toggleBtn.setAttribute("aria-pressed", String(visible));
+      toggleBtn.setAttribute("aria-label", visible ? "Hide password" : "Show password");
+    }
+
+    /* ---------- Copy to clipboard ---------- */
+
+    let copiedFeedbackTimer = null;
+
+    /** Briefly change the Copy button label to confirm the action. */
+    function flashCopied() {
+      copyBtn.textContent = "Copied!";
+      clearTimeout(copiedFeedbackTimer);
+      copiedFeedbackTimer = setTimeout(() => {
+        copyBtn.textContent = "Copy";
+      }, 1500);
+    }
+
+    /**
+     * Copy the current password to the clipboard.
+     * Prefers the async Clipboard API; falls back to selecting the input and
+     * using execCommand for non-secure contexts / older browsers.
+     */
+    async function copyPassword() {
+      const value = passwordEl.value;
+      if (!value) {
+        setStatus("Nothing to copy yet — generate a password first.", true);
+        return;
+      }
+
+      let ok = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(value);
+          ok = true;
+        }
+      } catch (_) {
+        ok = false;
+      }
+
+      if (!ok) {
+        // Fallback: select the read-only input and copy via execCommand.
+        passwordEl.select();
+        try {
+          ok = document.execCommand("copy");
+        } catch (_) {
+          ok = false;
+        }
+        const sel = window.getSelection && window.getSelection();
+        if (sel) sel.removeAllRanges();
+      }
+
+      if (ok) {
+        flashCopied();
+        setStatus("Password copied to clipboard.");
+      } else {
+        setStatus("Copy failed — select the password and copy manually.", true);
+      }
+    }
+
+    /* ---------- Event handlers ---------- */
+
+    /**
      * Handle a character-type checkbox toggle.
      * If the user would uncheck the last remaining type, undo it and warn.
+     * Otherwise regenerate so the display reflects the new selection.
      */
-    function handleTypeChange(event) {
-      const selected = getSelectedSets();
-      if (selected.length === 0) {
+    function onTypeChange(event) {
+      if (getSelectedSets().length === 0) {
         event.target.checked = true; // Revert: at least one type required.
         setStatus("At least one character type must stay selected.", true);
         return;
       }
-      setStatus("");
-    }
-
-    /** Generate a password from the current controls and show it. */
-    function handleGenerate() {
-      const sets = getSelectedSets();
-      const length = Number(lengthEl.value);
-
-      const password = generatePassword(length, sets);
-      passwordEl.value = password; // Shown only in the DOM; never logged/stored.
-      setStatus(`Generated a ${length}-character password.`);
+      regenerate(true);
     }
 
     /* ---------- Wire up events ---------- */
-    lengthEl.addEventListener("input", updateLengthReadout);
-    generateBtn.addEventListener("click", handleGenerate);
-    typeCheckboxes.forEach((cb) => cb.addEventListener("change", handleTypeChange));
+
+    // Slider: regenerate live while dragging (silent), announce on release.
+    lengthEl.addEventListener("input", () => {
+      updateLengthReadout();
+      regenerate(false);
+    });
+    lengthEl.addEventListener("change", () => regenerate(true));
+
+    // Buttons and checkboxes.
+    generateBtn.addEventListener("click", () => regenerate(true));
+    copyBtn.addEventListener("click", copyPassword);
+    toggleBtn.addEventListener("click", () => {
+      setPasswordVisibility(passwordEl.type === "password");
+    });
+    typeCheckboxes.forEach((cb) => cb.addEventListener("change", onTypeChange));
+    excludeAmbiguousEl.addEventListener("change", () => regenerate(true));
 
     /* ---------- Initial state ---------- */
     updateLengthReadout();
-    handleGenerate(); // Show a sample password on load.
+    setPasswordVisibility(false); // Start masked.
+    regenerate(false);            // Show a sample password on load.
   </script>
 </body>
 </html>
