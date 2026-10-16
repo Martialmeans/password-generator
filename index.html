@@ -3,21 +3,66 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
   <title>Password Generator</title>
   <style>
-    /* ---------- Design tokens ---------- */
+    /* ---------- Theme tokens ----------
+       Light is the default. The dark set is applied when the system prefers
+       dark AND the user has not forced light, or when data-theme="dark". */
     :root {
+      color-scheme: light;
+      --bg: #eef2f7;
+      --panel: #ffffff;
+      --panel-2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #64748b;
+      --on-accent: #06283d;
+      --accent: #0ea5e9;
+      --accent-strong: #0284c7;
+      --border: #cbd5e1;
+      --focus: #2563eb;
+      --shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+      --weak: #dc2626;
+      --fair: #ea580c;
+      --strong: #ca8a04;
+      --very-strong: #16a34a;
+      --radius: 12px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #0f172a;
+        --panel: #1e293b;
+        --panel-2: #273449;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --on-accent: #06283d;
+        --accent: #38bdf8;
+        --accent-strong: #0ea5e9;
+        --border: #334155;
+        --focus: #fbbf24;
+        --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+        --weak: #ef4444;
+        --fair: #f97316;
+        --strong: #eab308;
+        --very-strong: #22c55e;
+      }
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
       --bg: #0f172a;
       --panel: #1e293b;
       --panel-2: #273449;
       --text: #e2e8f0;
       --muted: #94a3b8;
+      --on-accent: #06283d;
       --accent: #38bdf8;
       --accent-strong: #0ea5e9;
       --border: #334155;
       --focus: #fbbf24;
-      --radius: 10px;
-      /* Strength level colors (also distinguished by segment count + label). */
+      --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
       --weak: #ef4444;
       --fair: #f97316;
       --strong: #eab308;
@@ -27,17 +72,23 @@
     /* ---------- Base / layout ---------- */
     * { box-sizing: border-box; }
 
+    /* Subtle, cheap transitions only (no layout/transform animation). */
+    *, *::before, *::after {
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 1.5rem;
+      padding: clamp(0.75rem, 4vw, 1.5rem);
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
       line-height: 1.5;
+      -webkit-text-size-adjust: 100%;
     }
 
     main {
@@ -46,13 +97,27 @@
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: clamp(1.25rem, 4vw, 2rem);
+      padding: clamp(1.1rem, 4vw, 2rem);
+      box-shadow: var(--shadow);
+    }
+
+    /* Header keeps the title centered while the theme toggle sits at the right. */
+    .app-header {
+      position: relative;
+      margin-bottom: 1.25rem;
     }
 
     h1 {
-      margin: 0 0 1.25rem;
+      margin: 0;
       font-size: clamp(1.25rem, 4vw, 1.6rem);
       text-align: center;
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 50%;
+      right: 0;
+      transform: translateY(-50%);
     }
 
     /* ---------- Password display ---------- */
@@ -135,15 +200,16 @@
 
     /* ---------- Buttons ---------- */
     button {
-      padding: 0.85rem 1.4rem;
+      min-height: 44px; /* touch-friendly */
+      padding: 0.7rem 1.3rem;
       font-size: 1rem;
       font-weight: 600;
-      color: #06283d;
+      color: var(--on-accent);
       background: var(--accent);
       border: none;
       border-radius: var(--radius);
       cursor: pointer;
-      transition: background 0.15s ease;
+      touch-action: manipulation;
     }
 
     button:hover { background: var(--accent-strong); }
@@ -156,6 +222,17 @@
     }
 
     .btn-secondary:hover { background: var(--border); }
+
+    .theme-toggle {
+      min-height: 36px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.85rem;
+      color: var(--text);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+    }
+
+    .theme-toggle:hover { background: var(--border); }
 
     /* Visible keyboard focus everywhere. */
     :focus-visible {
@@ -170,6 +247,8 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
     }
+
+    fieldset:last-of-type { margin-bottom: 0; }
 
     legend {
       padding: 0 0.5rem;
@@ -194,6 +273,7 @@
 
     input[type="range"] {
       width: 100%;
+      height: 1.75rem; /* larger touch target */
       accent-color: var(--accent);
       cursor: pointer;
     }
@@ -201,21 +281,21 @@
     .checkbox-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-      gap: 0.5rem 1rem;
+      gap: 0.25rem 1rem;
     }
 
     .checkbox-grid label {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.6rem;
       cursor: pointer;
-      padding: 0.35rem 0.25rem;
-      border-radius: 6px;
+      padding: 0.5rem 0.25rem; /* touch-friendly row height */
+      border-radius: 8px;
     }
 
     input[type="checkbox"] {
-      width: 1.1rem;
-      height: 1.1rem;
+      width: 1.25rem;
+      height: 1.25rem;
       accent-color: var(--accent);
       cursor: pointer;
     }
@@ -229,12 +309,25 @@
       text-align: center;
     }
 
-    #status.error { color: #fca5a5; }
+    #status.error { color: var(--weak); }
+
+    /* ---------- Motion preference ---------- */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; }
+    }
   </style>
 </head>
 <body>
   <main>
-    <h1>Password Generator</h1>
+    <div class="app-header">
+      <h1>Password Generator</h1>
+      <button
+        id="theme-toggle"
+        type="button"
+        class="theme-toggle"
+        aria-label="Switch to light theme"
+      >Light</button>
+    </div>
 
     <!-- Password display: read-only so it can be selected/copied but not edited.
          Starts masked (type="password"); the Show/Hide button toggles the type. -->
@@ -261,7 +354,7 @@
     <!-- Strength meter. The level is also conveyed by the number of filled
          segments and by the text label, so it does not rely on color alone. -->
     <section class="strength" aria-labelledby="strength-heading">
-      <h2 id="strength-heading" class="sr-only" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);">Password strength</h2>
+      <h2 id="strength-heading" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);">Password strength</h2>
       <div class="meter" id="meter" data-level="1" aria-hidden="true">
         <span class="seg"></span>
         <span class="seg"></span>
@@ -294,7 +387,7 @@
         <label><input type="checkbox" id="numbers" checked /> Numbers (0-9)</label>
         <label><input type="checkbox" id="symbols" checked /> Symbols (!@#$…)</label>
       </div>
-      <div class="checkbox-grid" style="margin-top: 0.5rem;">
+      <div class="checkbox-grid" style="margin-top: 0.25rem;">
         <label><input type="checkbox" id="exclude-ambiguous" /> Exclude ambiguous (0, O, l, 1, I)</label>
       </div>
     </fieldset>
@@ -326,11 +419,16 @@
       { max: Infinity, label: "Very strong", note: "Would take centuries to crack." },
     ];
 
+    // Theme preference is the only thing persisted (never the password).
+    const THEME_KEY = "pwgen-theme";
+
     /* ---------- DOM references ---------- */
+    const rootEl = document.documentElement;
     const passwordEl = document.getElementById("password");
     const generateBtn = document.getElementById("generate");
     const copyBtn = document.getElementById("copy");
     const toggleBtn = document.getElementById("toggle-visibility");
+    const themeBtn = document.getElementById("theme-toggle");
     const lengthEl = document.getElementById("length");
     const lengthValueEl = document.getElementById("length-value");
     const statusEl = document.getElementById("status");
@@ -447,6 +545,47 @@
       meterSegments.forEach((seg, i) => {
         seg.classList.toggle("filled", i < strength.level);
       });
+    }
+
+    /* ---------- Theme ---------- */
+
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+    /** Read the persisted theme choice, if any. */
+    function readStoredTheme() {
+      try {
+        return localStorage.getItem(THEME_KEY);
+      } catch (_) {
+        return null; // e.g. storage disabled
+      }
+    }
+
+    /** The theme actually in effect: explicit choice, else the system setting. */
+    function effectiveTheme() {
+      return rootEl.dataset.theme || (prefersDark.matches ? "dark" : "light");
+    }
+
+    /** Reflect the current theme on the toggle button. */
+    function updateThemeButton() {
+      const dark = effectiveTheme() === "dark";
+      themeBtn.textContent = dark ? "☀ Light" : "☾ Dark";
+      themeBtn.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+      themeBtn.setAttribute("aria-pressed", String(dark));
+    }
+
+    /** Force a theme and persist the choice. */
+    function applyTheme(theme) {
+      rootEl.dataset.theme = theme;
+      try {
+        localStorage.setItem(THEME_KEY, theme);
+      } catch (_) {
+        /* ignore storage errors */
+      }
+      updateThemeButton();
+    }
+
+    function toggleTheme() {
+      applyTheme(effectiveTheme() === "dark" ? "light" : "dark");
     }
 
     /* ---------- UI helpers ---------- */
@@ -578,10 +717,20 @@
     toggleBtn.addEventListener("click", () => {
       setPasswordVisibility(passwordEl.type === "password");
     });
+    themeBtn.addEventListener("click", toggleTheme);
     typeCheckboxes.forEach((cb) => cb.addEventListener("change", onTypeChange));
     excludeAmbiguousEl.addEventListener("change", () => regenerate(true));
 
+    // Keep the toggle label accurate if the system theme changes pre-choice.
+    prefersDark.addEventListener("change", () => {
+      if (!rootEl.dataset.theme) updateThemeButton();
+    });
+
     /* ---------- Initial state ---------- */
+    const storedTheme = readStoredTheme();
+    if (storedTheme) rootEl.dataset.theme = storedTheme;
+    updateThemeButton();
+
     updateLengthReadout();
     setPasswordVisibility(false); // Start masked.
     regenerate(false);            // Show a sample password on load.
