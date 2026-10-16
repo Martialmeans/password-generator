@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Password Generator</title>
+  <style>
+    /* ---------- Design tokens ---------- */
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-2: #273449;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-strong: #0ea5e9;
+      --border: #334155;
+      --focus: #fbbf24;
+      --radius: 10px;
+    }
+
+    /* ---------- Base / layout ---------- */
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    main {
+      width: 100%;
+      max-width: 34rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: clamp(1.25rem, 4vw, 2rem);
+    }
+
+    h1 {
+      margin: 0 0 1.25rem;
+      font-size: clamp(1.25rem, 4vw, 1.6rem);
+      text-align: center;
+    }
+
+    /* ---------- Password display ---------- */
+    .output-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    #password {
+      flex: 1;
+      min-width: 0;
+      padding: 0.85rem 1rem;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 1.1rem;
+      letter-spacing: 0.03em;
+      color: var(--text);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      /* Allow the user to select the password but not edit it. */
+      cursor: text;
+    }
+
+    /* ---------- Buttons ---------- */
+    button {
+      padding: 0.85rem 1.4rem;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #06283d;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    button:hover { background: var(--accent-strong); }
+
+    /* Visible keyboard focus everywhere. */
+    :focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    /* ---------- Controls ---------- */
+    fieldset {
+      margin: 0 0 1.25rem;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    legend {
+      padding: 0 0.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.5rem;
+    }
+
+    #length-value {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+      gap: 0.5rem 1rem;
+    }
+
+    .checkbox-grid label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      padding: 0.35rem 0.25rem;
+      border-radius: 6px;
+    }
+
+    input[type="checkbox"] {
+      width: 1.1rem;
+      height: 1.1rem;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* ---------- Status message (live region) ---------- */
+    #status {
+      min-height: 1.25rem;
+      margin: 1rem 0 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    #status.error { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Password Generator</h1>
+
+    <!-- Password display: read-only so it can be selected/copied but not edited. -->
+    <div class="output-row">
+      <input
+        id="password"
+        type="text"
+        readonly
+        aria-label="Generated password"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="Click Generate"
+      />
+      <button id="generate" type="button">Generate</button>
+    </div>
+
+    <!-- Length slider with live readout -->
+    <fieldset>
+      <legend>Length</legend>
+      <div class="slider-header">
+        <label for="length">Password length</label>
+        <output id="length-value" for="length">16</output>
+      </div>
+      <input type="range" id="length" min="8" max="64" value="16" step="1" />
+    </fieldset>
+
+    <!-- Character type selection -->
+    <fieldset>
+      <legend>Character types</legend>
+      <div class="checkbox-grid">
+        <label><input type="checkbox" id="lowercase" checked /> Lowercase (a-z)</label>
+        <label><input type="checkbox" id="uppercase" checked /> Uppercase (A-Z)</label>
+        <label><input type="checkbox" id="numbers" checked /> Numbers (0-9)</label>
+        <label><input type="checkbox" id="symbols" checked /> Symbols (!@#$…)</label>
+      </div>
+    </fieldset>
+
+    <!-- Polite live region: announces status/errors without stealing focus. -->
+    <p id="status" role="status" aria-live="polite"></p>
+  </main>
+
+  <script>
+    "use strict";
+
+    /* ---------- Character sets ---------- */
+    const SETS = {
+      lowercase: "abcdefghijklmnopqrstuvwxyz",
+      uppercase: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      numbers: "0123456789",
+      symbols: "!@#$%^&*()-_=+[]{};:,.<>?",
+    };
+
+    /* ---------- DOM references ---------- */
+    const passwordEl = document.getElementById("password");
+    const generateBtn = document.getElementById("generate");
+    const lengthEl = document.getElementById("length");
+    const lengthValueEl = document.getElementById("length-value");
+    const statusEl = document.getElementById("status");
+    const typeCheckboxes = Object.keys(SETS).map((id) =>
+      document.getElementById(id)
+    );
+
+    /* ---------- Randomness ---------- */
+
+    /**
+     * Return a uniform random integer in [0, maxExclusive).
+     * Uses rejection sampling to avoid modulo bias: values in the final,
+     * incomplete block that would make early numbers more likely are discarded.
+     */
+    function randomInt(maxExclusive) {
+      if (maxExclusive <= 0) throw new RangeError("maxExclusive must be > 0");
+      const buf = new Uint32Array(1);
+      // Largest multiple of maxExclusive that fits in the 32-bit range.
+      const limit = Math.floor(0x100000000 / maxExclusive) * maxExclusive;
+      let x;
+      do {
+        crypto.getRandomValues(buf);
+        x = buf[0];
+      } while (x >= limit);
+      return x % maxExclusive;
+    }
+
+    /** Pick one character at random from a string. */
+    function pickRandom(str) {
+      return str[randomInt(str.length)];
+    }
+
+    /** Fisher-Yates shuffle using unbiased random indices. */
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = randomInt(i + 1);
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    /* ---------- Generation ---------- */
+
+    /** Collect the character sets currently selected in the UI. */
+    function getSelectedSets() {
+      return typeCheckboxes
+        .filter((cb) => cb.checked)
+        .map((cb) => SETS[cb.id]);
+    }
+
+    /**
+     * Build a password of the given length.
+     * Guarantees at least one character from every selected set, then shuffles
+     * so the guaranteed characters are not predictably placed.
+     */
+    function generatePassword(length, sets) {
+      const chars = [];
+
+      // 1) One guaranteed character from each selected type.
+      for (const set of sets) chars.push(pickRandom(set));
+
+      // 2) Fill the remainder from the combined pool.
+      const pool = sets.join("");
+      while (chars.length < length) chars.push(pickRandom(pool));
+
+      // 3) Shuffle so guaranteed positions are randomized.
+      shuffle(chars);
+      return chars.join("");
+    }
+
+    /* ---------- UI helpers ---------- */
+
+    /** Show a message in the live region. `isError` styles it as a warning. */
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle("error", isError);
+    }
+
+    /** Keep the slider readout in sync with the slider value. */
+    function updateLengthReadout() {
+      lengthValueEl.textContent = lengthEl.value;
+    }
+
+    /**
+     * Handle a character-type checkbox toggle.
+     * If the user would uncheck the last remaining type, undo it and warn.
+     */
+    function handleTypeChange(event) {
+      const selected = getSelectedSets();
+      if (selected.length === 0) {
+        event.target.checked = true; // Revert: at least one type required.
+        setStatus("At least one character type must stay selected.", true);
+        return;
+      }
+      setStatus("");
+    }
+
+    /** Generate a password from the current controls and show it. */
+    function handleGenerate() {
+      const sets = getSelectedSets();
+      const length = Number(lengthEl.value);
+
+      const password = generatePassword(length, sets);
+      passwordEl.value = password; // Shown only in the DOM; never logged/stored.
+      setStatus(`Generated a ${length}-character password.`);
+    }
+
+    /* ---------- Wire up events ---------- */
+    lengthEl.addEventListener("input", updateLengthReadout);
+    generateBtn.addEventListener("click", handleGenerate);
+    typeCheckboxes.forEach((cb) => cb.addEventListener("change", handleTypeChange));
+
+    /* ---------- Initial state ---------- */
+    updateLengthReadout();
+    handleGenerate(); // Show a sample password on load.
+  </script>
+</body>
+</html>
