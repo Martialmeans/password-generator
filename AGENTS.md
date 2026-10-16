@@ -1,14 +1,13 @@
 # AGENTS.md
 
-## Project status
-- Freshly initialized repository: no application code, `package.json`, scripts, or dependencies exist yet.
-- The details below describe the **intended** stack. Verify against real files before relying on them, and update this file once code lands.
+## Project
+- Single-file password generator web app: `index.html` (HTML + CSS + vanilla JS, no dependencies).
+- Built in phases; Phase 1 (core generator) is done. Open `index.html` directly in a browser to run it — no build or dev server. `crypto.getRandomValues` works on `file://`.
+- Package manager: **npm**, but there is still no `package.json`. Do not assume build/test/lint/dev scripts exist — check for `package.json` first and only run scripts it defines.
+- Rules for this app: use `crypto.getRandomValues()` (never `Math.random()`) with rejection sampling; never log/store/send generated passwords.
 
-## Stack
-- Vanilla HTML, CSS, and JavaScript. No framework, bundler, or TypeScript.
-- Package manager: **npm**.
-
-## Working notes for agents
-- Do not assume build, test, lint, or dev scripts exist. There is no `package.json` yet, so commands like `npm test` / `npm run build` will fail — check `package.json` first and only use scripts it actually defines.
-- No monorepo, CI, required services, or environment variables are configured.
-- Prefer plain browser code; do not introduce a framework or build tooling unless asked.
+## Git & GitHub
+- `git` (2.56) and `gh` (2.102) are installed and on the system PATH — a fresh terminal resolves both normally.
+- Only if a shell reports "git is not recognized" (it inherited a stale PATH, e.g. a session started before a PATH change), prepend: `$env:PATH = "C:\Program Files\Git\cmd;" + $env:PATH` (gh dir: `C:\Program Files\GitHub CLI`).
+- Remote `origin` = https://github.com/Martialmeans/password-generator.git (public). Default/pushed branch is `master` (not `main`).
+- `git push`/`gh` write progress to stderr; PowerShell may render this as a red `NativeCommandError` even when the command succeeded — verify with `git status -sb`.
