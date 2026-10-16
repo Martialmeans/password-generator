@@ -17,6 +17,11 @@
       --border: #334155;
       --focus: #fbbf24;
       --radius: 10px;
+      /* Strength level colors (also distinguished by segment count + label). */
+      --weak: #ef4444;
+      --fair: #f97316;
+      --strong: #eab308;
+      --very-strong: #22c55e;
     }
 
     /* ---------- Base / layout ---------- */
@@ -76,7 +81,56 @@
     .actions-row {
       display: flex;
       gap: 0.5rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    /* ---------- Strength meter ---------- */
+    .strength { margin-bottom: 1.5rem; }
+
+    .meter {
+      display: flex;
+      gap: 4px;
+      height: 10px;
+      margin-bottom: 0.5rem;
+    }
+
+    .meter .seg {
+      flex: 1;
+      border-radius: 3px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+    }
+
+    .meter .seg.filled { border-color: transparent; }
+    .meter[data-level="1"] .seg.filled { background: var(--weak); }
+    .meter[data-level="2"] .seg.filled { background: var(--fair); }
+    .meter[data-level="3"] .seg.filled { background: var(--strong); }
+    .meter[data-level="4"] .seg.filled { background: var(--very-strong); }
+
+    .strength-readout {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin: 0 0 0.25rem;
+      font-size: 0.9rem;
+    }
+
+    .strength-label { font-weight: 700; }
+    .strength-label.level-1 { color: var(--weak); }
+    .strength-label.level-2 { color: var(--fair); }
+    .strength-label.level-3 { color: var(--strong); }
+    .strength-label.level-4 { color: var(--very-strong); }
+
+    .strength-bits {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .strength-note {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--muted);
     }
 
     /* ---------- Buttons ---------- */
@@ -204,6 +258,23 @@
       <button id="toggle-visibility" type="button" class="btn-secondary" aria-pressed="false" aria-label="Show password">Show</button>
     </div>
 
+    <!-- Strength meter. The level is also conveyed by the number of filled
+         segments and by the text label, so it does not rely on color alone. -->
+    <section class="strength" aria-labelledby="strength-heading">
+      <h2 id="strength-heading" class="sr-only" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);">Password strength</h2>
+      <div class="meter" id="meter" data-level="1" aria-hidden="true">
+        <span class="seg"></span>
+        <span class="seg"></span>
+        <span class="seg"></span>
+        <span class="seg"></span>
+      </div>
+      <p class="strength-readout">
+        <span class="strength-label level-1" id="strength-label">—</span>
+        <span class="strength-bits" id="strength-bits">0 bits</span>
+      </p>
+      <p class="strength-note" id="strength-note"></p>
+    </section>
+
     <!-- Length slider with live readout -->
     <fieldset>
       <legend>Length</legend>
@@ -246,6 +317,15 @@
     // Characters that are easy to confuse with one another.
     const AMBIGUOUS = "0Ol1I";
 
+    // Strength tiers by entropy (bits). First tier whose `max` exceeds the
+    // entropy wins; the last is open-ended.
+    const STRENGTH_LEVELS = [
+      { max: 40, label: "Weak", note: "Easily cracked — add length or more character types." },
+      { max: 60, label: "Fair", note: "Could be cracked by a determined attacker." },
+      { max: 90, label: "Strong", note: "Would take years to crack." },
+      { max: Infinity, label: "Very strong", note: "Would take centuries to crack." },
+    ];
+
     /* ---------- DOM references ---------- */
     const passwordEl = document.getElementById("password");
     const generateBtn = document.getElementById("generate");
@@ -255,6 +335,11 @@
     const lengthValueEl = document.getElementById("length-value");
     const statusEl = document.getElementById("status");
     const excludeAmbiguousEl = document.getElementById("exclude-ambiguous");
+    const meterEl = document.getElementById("meter");
+    const strengthLabelEl = document.getElementById("strength-label");
+    const strengthBitsEl = document.getElementById("strength-bits");
+    const strengthNoteEl = document.getElementById("strength-note");
+    const meterSegments = Array.from(meterEl.querySelectorAll(".seg"));
     const typeCheckboxes = ["lowercase", "uppercase", "numbers", "symbols"].map(
       (id) => document.getElementById(id)
     );
@@ -328,6 +413,42 @@
       return chars.join("");
     }
 
+    /* ---------- Strength ---------- */
+
+    /**
+     * Estimate password strength from entropy: bits = length * log2(poolSize).
+     * Returns the rounded bit count, a 1-4 level, and its label/note.
+     */
+    function calculateStrength(length, poolSize) {
+      const bits =
+        poolSize > 0 ? Math.round(length * Math.log2(poolSize)) : 0;
+
+      let level = STRENGTH_LEVELS.length;
+      for (let i = 0; i < STRENGTH_LEVELS.length; i++) {
+        if (bits < STRENGTH_LEVELS[i].max) {
+          level = i + 1;
+          break;
+        }
+      }
+
+      const def = STRENGTH_LEVELS[level - 1];
+      return { bits, level, label: def.label, note: def.note };
+    }
+
+    /** Paint the meter, label, bit count and note for a strength result. */
+    function renderStrength(strength) {
+      strengthLabelEl.textContent = strength.label;
+      strengthLabelEl.className = "strength-label level-" + strength.level;
+      strengthBitsEl.textContent = "~" + strength.bits + " bits";
+      strengthNoteEl.textContent = strength.note;
+      meterEl.dataset.level = String(strength.level);
+
+      // Filled-segment count is a non-color cue for the level.
+      meterSegments.forEach((seg, i) => {
+        seg.classList.toggle("filled", i < strength.level);
+      });
+    }
+
     /* ---------- UI helpers ---------- */
 
     /** Show a message in the live region. `isError` styles it as a warning. */
@@ -342,7 +463,8 @@
     }
 
     /**
-     * Generate a fresh password from the current controls and display it.
+     * Generate a fresh password from the current controls, display it and
+     * update the strength meter.
      * `announce` controls whether the live region is updated (off while the
      * slider is being dragged, to avoid announcement spam).
      */
@@ -351,7 +473,15 @@
       const length = Number(lengthEl.value);
 
       passwordEl.value = generatePassword(length, sets); // DOM only; never logged/stored.
-      if (announce) setStatus(`Generated a ${length}-character password.`);
+
+      const strength = calculateStrength(length, sets.join("").length);
+      renderStrength(strength);
+
+      if (announce) {
+        setStatus(
+          `Generated a ${length}-character password — ${strength.label.toLowerCase()}, about ${strength.bits} bits of entropy.`
+        );
+      }
     }
 
     /** Toggle the display between masked (password) and plain (text). */
